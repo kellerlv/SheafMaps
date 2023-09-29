@@ -1,0 +1,17 @@
+Makefile
+*.aux
+*.bcf
+*.log
+*.out
+*.pdf
+*.pre
+*.run.xml
+*.toc
+*.blg
+*.brf
+*.nav
+*.snm
+*.vrb
+*.tar.gz
+*-blx.bib
+*.synctex.gz

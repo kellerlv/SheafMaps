@@ -3,7 +3,6 @@ Makefile
 *.bcf
 *.log
 *.out
-*.pdf
 *.pre
 *.run.xml
 *.toc

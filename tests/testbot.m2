@@ -26,6 +26,10 @@ needsPackage "SheafMaps"
 installPackage "SheafMaps"
 elapsedTime check("SheafMaps", Verbose => true)
 
+needsPackage "Varieties"
+installPackage "Varieties"
+elapsedTime check("Varieties", Verbose => true)
+
 -- The following lines automatically run every file in the "tests" directory.
 -- If you wish, you can change testDir to any other directory.
 testDir = currentDirectory() | "tests/"

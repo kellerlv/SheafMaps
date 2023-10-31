@@ -37,15 +37,37 @@ export {
     "OO",
     }
 
--- TODO: move these to Core
-tryHooks = (key, args, f) -> if (c := runHooks(key, args)) =!= null then c else f args
-cacheHooks = (ckey, X, mkey, args, f) -> ((cacheValue ckey) (X -> tryHooks(mkey, args, f))) X
-
 importFrom_Core {
     "toString'", "expressionValue", -- TODO: prune these
     "getAttribute", "hasAttribute", "ReverseDictionary",
-    "cacheHooks", "tryHooks",
     }
+
+-----------------------------------------------------------------------------
+-- Loaned utilities not yet added to Core
+-----------------------------------------------------------------------------
+
+tryHooks = (key, args, f) -> if (c := runHooks(key, args)) =!= null then c else f args
+cacheHooks = (ckey, X, mkey, args, f) -> ((cacheValue ckey) (X -> tryHooks(mkey, args, f))) X
+
+applyMethod = (key, X) -> (
+    if (F := lookup key) =!= null then F X else error "no method available") -- expand this error message later
+
+-- TODO: combine these with applyMethod and retire these
+applyMethod' = (key, desc, X) -> (
+    if (F := lookup key) =!= null then F X
+    else error("no method for ", desc, " applied to ", X))
+
+applyMethod'' = (F, X) -> (
+    -- TODO: write a variation of lookup to do this
+    key := prepend(F, delete(Option, apply(X, class)));
+    applyMethod'(key, toString F, X))
+
+-- flatten the arguments given to a scripted functor
+functorArgs = method()
+functorArgs(Thing,        Sequence) := (i,    args) -> prepend(i, args)
+functorArgs(Thing, Thing, Sequence) := (i, j, args) -> prepend(i, prepend(j, args))
+functorArgs(Thing, Thing, Thing)    :=
+functorArgs(Thing, Thing)           := identity
 
 -----------------------------------------------------------------------------
 -- Local utilities
@@ -113,17 +135,19 @@ PP = new ScriptedFunctor from {
     }
 
 -- TODO: add options for variable names, other monoid options?
-PP ZZ       := ProjectiveVariety => n -> Proj(ZZ[vars(0..n)])
-PP List     := ProjectiveVariety => N -> times apply(toSequence N, n -> PP^n)
-PP Sequence := ProjectiveVariety => w -> Proj(ZZ[vars(0..#w-1), Degrees => toList listZZ w])
+-- TODO: should really be PP^ZZ, but methods can't be installed that way
+PP ZZ       := ProjectiveVariety => n -> Proj(ZZ[vars(0..n#0)])
+--PP List     := ProjectiveVariety => N -> cartesianProduct apply(N#0, n -> PP^n)
+PP Sequence := ProjectiveVariety => w -> Proj(ZZ[vars(0..#w#0-1), Degrees => listZZ w#0])
 -- TODO: see https://github.com/Macaulay2/M2/issues/2351
 PP(Ring, ZZ)       :=
-PP(Ring, List)     := ProjectiveVariety => (K, N) -> PP^N ** K
+--PP(Ring, List)     := ProjectiveVariety => (K, N) -> PP^N ** K
 PP(Ring, Sequence) := ProjectiveVariety => (K, w) -> PP w ** K
 *-
 
 -- this is a kludge to make Spec ZZ/101[x,y]/(y^2-x^3) and Proj ZZ/101[x,y]/(x^2-y^2) work as expected
 -- TODO: also make Spec kk{x,y} or Spec kk<|x,y|> work when they are supported
+-- TODO: document this in Proj and Spec
     AffineVariety/Thing :=     AffineVariety => (X, I) -> Spec((ring X)/I)
 ProjectiveVariety/Thing := ProjectiveVariety => (X, I) -> Proj((ring X)/I) -- TODO: should this be saturated?
     AffineVariety Array :=     AffineVariety => (X, M) -> Spec((ring X) M)
@@ -153,6 +177,7 @@ ambient ProjectiveVariety := ProjectiveVariety => X -> Proj ambient ring X
 
 -- arithmetic ops
 -- TODO: document
+-- TODO: move cartesianProduct here
 AffineVariety     **     AffineVariety :=     AffineVariety => (X, Y) -> Spec(ring X ** ring Y)
 AffineVariety     ** Ring              :=     AffineVariety => (X, R) -> X ** Spec R
 -- TODO: uncomment when Proj works with multigraded rings
@@ -249,9 +274,6 @@ sheaf(ProjectiveVariety, Module) := CoherentSheaf => (X, M) -> (
 
 -- TODO: consider adding IdealSheaf or SheafOfIdeals type
 -- sheaf Ideal := Ideal ~ := CoherentSheaf => I -> sheaf(Proj ring M, I)
-
-applyMethod = (key, X) -> (
-    if (F := lookup key) =!= null then F X else error "no method available") -- expand this error message later
 
 OO = new ScriptedFunctor from {
      subscript => X -> applyMethod((symbol _,     OO, class X), (OO, X)),
@@ -389,7 +411,7 @@ texMath    SumOfTwists :=  texMath @@ expression
 toString   SumOfTwists := toString @@ expression
 
 -----------------------------------------------------------------------------
--- helpers for sheaf cohomology of a sum of twists
+-- helpers for sheaf cohomology
 -----------------------------------------------------------------------------
 
 -- TODO: should this also check that the variety is finite type over the field?
@@ -398,12 +420,14 @@ checkVariety := (X, F) -> (
     if not isAffineRing ring X then error "expected a variety defined over a field";
     )
 
--- computes the pushforward via S/I <-- S
-flattenModule := M -> (
-    f := presentation M;
-    g := presentation ring M;
+-- pushforward the module to PP^n via S/I <-- S
+flattenModule   = M -> cokernel flattenMorphism presentation M
+flattenMorphism = f -> (
+    g := presentation ring f;
+    S := ring g;
     -- TODO: sometimes lifting to ring g is enough, how can we detect this?
-    cokernel lift(f, ring g) ** cokernel g)
+    -- TODO: why doesn't lift(f, ring g) do this automatically?
+    map(target f ** S, source f ** S, lift(cover f, S)) ** cokernel g)
 
 -- TODO: this is called twice
 -- TODO: implement for multigraded ring
@@ -428,6 +452,7 @@ twistedGlobalSectionsModule = (F, bound) -> (
     A := ring F;
     if degreeLength A =!= 1 then error "expected degree length 1";
     -- quotient by H_m^0(M)
+    -- TODO: without "cokernel presentation module F" some results seem to change
     M := killH0 module F;
     -- pushforward to the projective space
     -- TODO: both n and w need to be adjusted for the multigraded case
@@ -483,15 +508,15 @@ cohomology(ZZ, ProjectiveVariety, CoherentSheaf) := Module => opts -> (p, X, F) 
     checkVariety(X, F);
     if not F.cache.?HH then F.cache.HH = new MutableHashTable;
     if F.cache.HH#?p   then return F.cache.HH#p;
-    -- TODO: we only need basis(0, G), is this too much computation?
+    -- TODO: only need basis(0, G) in the end, is this too much computation?
     G := if p == 0 then twistedGlobalSectionsModule(F, 0) -- HH^0 F(>=0)
     else (
-	-- pushforward F to a projective space first
+	-- pushforward F to PP^n
 	M := flattenModule module F;
-	A := ring M;
+	S := ring M;
 	-- TODO: both n and w need to be adjusted for the multigraded case
-	n := dim A-1;
-	w := A^{-n-1};
+	n := dim S-1;
+	w := S^{-n-1};
 	-- using Serre duality for coherent sheaves on schemes with mild
 	-- singularities, Cohen–Macaulay schemes, not just smooth schemes.
 	-- TODO: check that X is proper (or at least finite type)
@@ -653,23 +678,6 @@ Ext(ZZ, CoherentSheaf, CoherentSheaf) := Module => opts -> (p, F, G) -> (
 -----------------------------------------------------------------------------
 -- TODO: HodgeTally for pretty printing the Hodge diamond
 
--- flatten the arguments given to a scripted functor
-functorArgs = method()
-functorArgs(Thing,        Sequence) := (i,    args) -> prepend(i, args)
-functorArgs(Thing, Thing, Sequence) := (i, j, args) -> prepend(i, prepend(j, args))
-functorArgs(Thing, Thing, Thing)    :=
-functorArgs(Thing, Thing)           := identity
-
--- TODO: combine these with applyMethod and retire these
-applyMethod' = (key, desc, X) -> (
-    if (F := lookup key) =!= null then F X
-    else error("no method for ", desc, " applied to ", X))
-
-applyMethod'' = (F, X) -> (
-    -- TODO: write a variation of lookup to do this
-    key := prepend(F, delete(Option, apply(X, class)));
-    applyMethod'(key, toString F, if #X == 1 then X#0 else X))
-
 hh = new ScriptedFunctor from {
     superscript => pq -> new ScriptedFunctor from {
 	-- hh^(p,q) X = dim HH^p(X, Omega^q)
@@ -679,7 +687,7 @@ hh = new ScriptedFunctor from {
     }
 
 -- using Hodge symmetry and Serre duality to ease the computation
--- TODO: is min the most efficient?
+-- TODO: is minimum necessarily the most efficient?
 min'pq := d -> (p,q) -> min{(p,q), (q,p), (d-p,d-q), (d-q,d-p)}
 
 hh(Sequence, ProjectiveVariety) := ZZ => (pq, X) -> (
@@ -711,5 +719,9 @@ end--
 
 uninstallPackage "Varieties"
 restart
+installPackage "Varieties"
+viewHelp "Varieties"
+
+restart
 debug needsPackage "Varieties"
-check Varieties
+check "Varieties"

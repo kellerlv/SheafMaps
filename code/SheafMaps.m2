@@ -3,10 +3,13 @@ newPackage(
     Version => "0.1",
     Date => "September 27, 2023",
     Authors => {
-	{Name => "Keller VandeBogert", Email => "kvandebo@nd.edi", HomePage => "todo"}},
+	{ Name => "Keller VandeBogert", Email => "kvandebo@nd.edu", HomePage => "todo" },
+	{ Name => "Mahrud Sayrafi",     Email => "mahrud@umn.edu",  HomePage => "https://math.umn.edu/~mahrud/" },
+	{ Name => "Devlin Mallory",     Email => "malloryd@math.utah.edu",  HomePage => "https://www.math.utah.edu/~malloryd/" }
+    },
     Headline => "methods for working with morphisms of sheaves",
     Keywords => {"Algebraic Geometry", "Homological Algebra"},
-    PackageExports => {"Truncations"},
+    PackageExports => { -*"Varieties",*- "Truncations" },
     DebuggingMode => true
     )
 
@@ -235,6 +238,9 @@ Hom(CoherentSheaf, CoherentSheaf) := Module => (F, G) -> (
     d := regularity coker f + 1;
     -- so we truncate the target until it is surjective
     f  = inducedMap(truncate(d, target f), , f);
+    -- FIXME: the line above is giving an error:
+    -- when pruning is an isomorphism, coker f is 0 and
+    -- the regularity -infinity, so we cannot use that to truncate
     -- FIXME: there's still a bug here where truncation
     -- strangely flips the rows; see the failing test.
     B := inducedMap(target f, , basis(0, module H));

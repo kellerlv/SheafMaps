@@ -30,7 +30,7 @@ newPackage(
 importFrom_Core {
     "concatCols",
     "raw", "rawSelectByDegrees",
-    "tryHooks",
+--    "tryHooks",
     }
 
 -- "truncate" is exported by Core
@@ -41,6 +41,12 @@ export {
 
 protect Exterior
 protect Nef
+
+-----------------------------------------------------------------------------
+-- Loaned utilities not yet added to Core
+-----------------------------------------------------------------------------
+
+tryHooks = (key, args, f) -> if (c := runHooks(key, args)) =!= null then c else f args
 
 --------------------------------------------------------------------
 -- Helpers

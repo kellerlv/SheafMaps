@@ -73,11 +73,35 @@ export {
 
 importFrom_Core {
     "getAttribute", "hasAttribute", "ReverseDictionary",
-    "applyMethod", "applyMethod''", "functorArgs",
     "toString'", "expressionValue", "unhold", -- TODO: prune these
-    "tryHooks", "cacheHooks",
-    "BinaryPowerMethod",
     }
+
+-----------------------------------------------------------------------------
+-- Loaned utilities not yet added to Core
+-----------------------------------------------------------------------------
+
+tryHooks = (key, args, f) -> if (c := runHooks(key, args)) =!= null then c else f args
+cacheHooks = (ckey, X, mkey, args, f) -> ((cacheValue ckey) (X -> tryHooks(mkey, args, f))) X
+
+applyMethod = (key, X) -> (
+    if (F := lookup key) =!= null then F X else error "no method available") -- expand this error message later
+
+-- TODO: combine these with applyMethod and retire these
+applyMethod' = (key, desc, X) -> (
+    if (F := lookup key) =!= null then F X
+    else error("no method for ", desc, " applied to ", X))
+
+applyMethod'' = (F, X) -> (
+    -- TODO: write a variation of lookup to do this
+    key := prepend(F, delete(Option, apply(X, class)));
+    applyMethod'(key, toString F, X))
+
+-- flatten the arguments given to a scripted functor
+functorArgs = method()
+functorArgs(Thing,        Sequence) := (i,    args) -> prepend(i, args)
+functorArgs(Thing, Thing, Sequence) := (i, j, args) -> prepend(i, prepend(j, args))
+functorArgs(Thing, Thing, Thing)    :=
+functorArgs(Thing, Thing)           := identity
 
 -----------------------------------------------------------------------------
 -- Local utilities
@@ -533,7 +557,7 @@ twistedGlobalSectionsModule = (F, bound) -> (
 	-- applying Hom(-,N) to the sequence above
         -- c.f. the limit from minimalPresentation hook
         -- and emsbound in NormalToricVarieties/Sheaves.m2
-        phi := Hom(inc, N, MinimalGenerators => true) * iso);
+        phi := Hom(inc, N-*, MinimalGenerators => true*-) * iso);
     -- now we compute the center map in the sequence
     -- 0 -> HH^0_B(M) -> M -> Gamma_* F -> HH^1_B(M) -> 0
     iota := inverse G.cache.pruningMap; -- map from Gamma_* F to its minimal presentation
@@ -648,8 +672,8 @@ sheafHom = method(TypicalValue => CoherentSheaf, Options => options Hom)
 sheafHom(SheafOfRings, SheafOfRings)  :=
 sheafHom(SheafOfRings, CoherentSheaf) :=
 sheafHom(CoherentSheaf, SheafOfRings)  :=
-sheafHom(CoherentSheaf, CoherentSheaf) := CoherentSheaf => o -> (F, G) -> (
-    sameVariety(F, G); sheaf(variety F, Hom(module F, module G, o)))
+sheafHom(CoherentSheaf, CoherentSheaf) := CoherentSheaf => (F, G) -> (
+    sameVariety(F, G); sheaf(variety F, Hom(module F, module G)))
 
 sheafExt = new ScriptedFunctor from {
     superscript => i -> new ScriptedFunctor from {
@@ -662,7 +686,7 @@ sheafExt = new ScriptedFunctor from {
 sheafExt(ZZ, SheafOfRings, SheafOfRings)  :=
 sheafExt(ZZ, SheafOfRings, CoherentSheaf) :=
 sheafExt(ZZ, CoherentSheaf, SheafOfRings)  :=
-sheafExt(ZZ, CoherentSheaf, CoherentSheaf) := CoherentSheaf => options Ext.argument >> opts -> (i, F, G) -> (
+sheafExt(ZZ, CoherentSheaf, CoherentSheaf) := CoherentSheaf => {} >> opts -> (i, F, G) -> (
     sameVariety(F, G); sheaf(variety F, Ext^i(module F, module G, opts)))
 
 -----------------------------------------------------------------------------
@@ -829,4 +853,13 @@ viewHelp "Varieties"
 
 restart
 debug needsPackage "Varieties"
+check "Varieties"
+
+-- TESTING:
+restart
+uninstallAllPackages()
+needsPackage "Truncations"
+needsPackage "Varieties"
+installPackage "Truncations"
+installPackage "Varieties"
 check "Varieties"

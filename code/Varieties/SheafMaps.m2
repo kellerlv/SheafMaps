@@ -239,33 +239,45 @@ SheafMap.InverseMethod = (cacheValue symbol inverse) (f -> (
 	inducedMap(source g, target h) * h, e#1 + 1))
     )
 
+binaryPower := (W,n,times,unit,inverse) -> (
+     if n === 0 then return unit();
+     if n < 0 then (W = inverse W; n = -n);
+     Z := null;
+     while (
+         if odd n then if Z === null then Z = W else Z = times(Z,W);
+         n = n // 2;
+         n =!= 0
+         )
+     do W = times(W, W);
+     Z)
+
 SheafMap#1 = f -> (
     if source f === target f then id_(target f)
     else error "expected source and target to agree")
-SheafMap^ZZ := SheafMap => BinaryPowerMethod
+SheafMap^ZZ := SheafMap => (F,n) -> binaryPower(F, n, tensor, () -> id_(target F), inverse)
 
 -----------------------------------------------------------------------------
 -- sheafHom and Hom
 -----------------------------------------------------------------------------
-sheafHom(SheafMap, SheafMap)      := SheafMap => o -> (phi, psi) -> (dual phi) ** psi
-sheafHom(SheafMap, CoherentSheaf) := SheafMap => o -> (phi, F) -> sheafHom(phi, id_F)
-sheafHom(CoherentSheaf, SheafMap) := SheafMap => o -> (F, phi) -> sheafHom(id_F, phi)
-sheafHom(SheafMap, SheafOfRings)  := SheafMap => o -> (phi, O) -> sheafHom(phi, id_(O^1))
-sheafHom(SheafOfRings, SheafMap)  := SheafMap => o -> (O, phi) -> sheafHom(id_(O^1), phi)
+sheafHom(SheafMap, SheafMap)      := SheafMap => (phi, psi) -> (dual phi) ** psi
+sheafHom(SheafMap, CoherentSheaf) := SheafMap => (phi, F) -> sheafHom(phi, id_F)
+sheafHom(CoherentSheaf, SheafMap) := SheafMap => (F, phi) -> sheafHom(id_F, phi)
+sheafHom(SheafMap, SheafOfRings)  := SheafMap => (phi, O) -> sheafHom(phi, id_(O^1))
+sheafHom(SheafOfRings, SheafMap)  := SheafMap => (O, phi) -> sheafHom(id_(O^1), phi)
 
 -- See [Hartshorne, Ch. III Exercise 6.1, pp. 237]
 -- TODO: these three calls could be simpler, but F^1 erases cached info of F
-Hom(SheafOfRings, SheafOfRings)  := Module => opts -> (O, O') -> Hom(O^1, O'^1, opts)
-Hom(SheafOfRings, CoherentSheaf) := Module => opts -> (O, G)  -> Hom(O^1, G, opts)
-Hom(CoherentSheaf, SheafOfRings)  := Module => opts -> (F, O) -> Hom(F, O^1, opts)
-Hom(CoherentSheaf, CoherentSheaf) := Module => opts -> (F, G) -> (
+Hom(SheafOfRings, SheafOfRings)  := Module => (O, O') -> Hom(O^1, O'^1)
+Hom(SheafOfRings, CoherentSheaf) := Module => (O, G)  -> Hom(O^1, G)
+Hom(CoherentSheaf, SheafOfRings)  := Module => (F, O) -> Hom(F, O^1)
+Hom(CoherentSheaf, CoherentSheaf) := Module => (F, G) -> (
     -- The previous version simply returned HH^0(X, sheafHom(F, G, DegreeLimit => 0))
     -- but this version also supports homomorphism.
     -- TODO: either reduce calls to prunes, or keep
     -- the previous method as a faster strategy.
     F' := prune F;
     G' := prune G;
-    H := prune sheafHom(F', G', opts, DegreeLimit => 0);
+    H := prune sheafHom(F', G');
     f := matrix H.cache.pruningMap;
     -- Note: we prune F and G so that f is an isomorphism of modules,
     -- otherwise there may be morphisms in H that do not correspond
@@ -323,7 +335,7 @@ inducedMap(M, N) -- anti-digonal
 ///
 
 -- Note: homomorphism(Matrix) is defined to use V.cache.homomorphism
-homomorphism' SheafMap := o -> h -> moveToField basis(0, homomorphism'(matrix h, o))
+homomorphism' SheafMap := h -> moveToField basis(0, homomorphism'(matrix h))
 
 -----------------------------------------------------------------------------
 -- homology
@@ -492,6 +504,8 @@ homomorphism Vector := v -> homomorphism matrix v
 -----------------------------------------------------------------------------
 
 -- TODO: also for a list of matrices
+protect pullbackMaps
+pullback = method()
 pullback(SheafMap, SheafMap) := CoherentSheaf => {} >> o -> (f, g) -> (
     -- TODO: use != instead
     if target f =!= target g then error "expected maps with the same target";
@@ -504,6 +518,8 @@ pullback(SheafMap, SheafMap) := CoherentSheaf => {} >> o -> (f, g) -> (
     P)
 
 -- TODO: also for a list of matrices
+protect pushoutMaps
+pushout = method()
 pushout(SheafMap, SheafMap) := CoherentSheaf => (f, g) -> (
     -- TODO: use != here instead
     if source matrix f =!= source matrix g then error "expected maps with the same source";
@@ -557,6 +573,27 @@ TEST ///
   assert(prune pullback(M_[0], M_[1]) == 0)
   assert(prune pushout(M^[0], M^[1]) == 0)
 ///
+
+--- borrowed from Core
+pullback(Matrix, Matrix) := Module => {} >> o -> (f, g) -> (
+    if target f =!= target g then error "expected maps with the same target";
+    h := f | -g;
+    P := kernel h;
+    S := source h;
+    P.cache.pullbackMaps = {
+	map(source f, S, S^[0], Degree => - degree f) * inducedMap(S, P),
+	map(source g, S, S^[1], Degree => - degree g) * inducedMap(S, P)};
+    P)
+
+pushout(Matrix, Matrix) := Module => (f, g) -> (
+    if source f =!= source g then error "expected maps with the same source";
+    h := f || -g;
+    P := cokernel h;
+    T := target h;
+    P.cache.pushoutMaps = {
+	inducedMap(P, T) * map(T, target f, T_[0], Degree => - degree f),
+	inducedMap(P, T) * map(T, target g, T_[1], Degree => - degree g)};
+    P)
 
 -----------------------------------------------------------------------------
 -- Tests
